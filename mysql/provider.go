@@ -151,7 +151,10 @@ func Provider() *schema.Provider {
 					},
 				},
 			},
-
+			"ssl_ca": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"max_conn_lifetime_sec": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -273,7 +276,23 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	var privateIp = d.Get("private_ip").(bool)
 	var tlsConfig = d.Get("tls").(string)
 	var tlsConfigStruct *tls.Config
+	var sslCa = d.Get("ssl_ca").(string)
+	if sslCa != "" && tlsConfig == "true" {
+		tlsConfig = "custom"
+	}
 
+	if tlsConfig == "custom" {
+		rootCertPool := x509.NewCertPool()
+		sslCaBytes := []byte(sslCa)
+		if ok := rootCertPool.AppendCertsFromPEM(sslCaBytes); !ok {
+			return nil, diag.Errorf("Could not read a valid PEM certificate")
+		}
+
+		mysql.RegisterTLSConfig("custom", &tls.Config{
+			RootCAs:            rootCertPool,
+			InsecureSkipVerify: d.Get("tls").(string) == "skip-verify",
+		})
+	}
 	customTLSMap := d.Get("custom_tls").([]interface{})
 	if len(customTLSMap) > 0 {
 		var customTLS CustomTLS
